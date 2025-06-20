@@ -1,0 +1,6 @@
+data/*.png
+data/*.jpg
+data/*.jpeg
+data/*.gif
+.vscode/
+# Ignore all files in the data directory except for .txt files
