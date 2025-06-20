@@ -120,7 +120,6 @@ function loss_fn(p_net, _)
 
   # Calculate the loss from the ODE itself (the PDE loss, though it's an ODE).
   # This is the mean squared error between the two sides of our equation over all collocation points.
-  # We use "L_pde" instead of the "ℓ" symbol to be more explicit.
   loss_pde = sum(abs2, D3u_approx(xi) - cos(F(pi)*xi) for xi in xs) / num_points
 
   # Calculate the loss from the boundary conditions.
