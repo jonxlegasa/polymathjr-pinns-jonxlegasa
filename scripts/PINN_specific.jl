@@ -42,7 +42,7 @@ F = Float32
 
 # Using ModelingToolkit, we define the independent variable `x` and the dependent variable `u(x)`.
 @parameters x
-@variables   u(..)
+@variables  u(..)
 
 # Define differential operators for convenience.
 Dxxx = Differential(x)^3
@@ -87,7 +87,7 @@ bc_weight = F(20.0)
 # Define the neural network architecture using Lux.
 # It takes one dummy input and outputs N+1 values, which will be our coefficients a₀ to aₙ.
 coeff_net = Lux.Chain(
-  Lux.Dense(1, 100, σ), # Hidden layer with 100 neurons and sigmoid activation. "sigmoid" is easier to type than "σ".
+  Lux.Dense(1, 100, σ), # Hidden layer with 100 neurons and sigmoid activation.
   Lux.Dense(100, N+1)             # Output layer with N+1 neurons (one for each coefficient).
 )
 
@@ -138,7 +138,7 @@ end
 # Step 5: Train the Neural Network
 # ---------------------------------------------------------------------------
 
-maxiters = 2500 # The total number of training iterations.
+maxiters = 500 # The total number of training iterations.
 p_bar = Progress(maxiters, desc="Training coefficient net...") # The progress bar.
 
 # The callback function is called after each optimization step.
@@ -222,7 +222,7 @@ savefig(plot_error, "data/error.png")
 # --- Plot 3: Plot the error of the learned coefficients ---
 
 # The true coefficients a_n are the n-th derivatives of the analytic solution at x=0.
-# For our u(x), these have been pre-calculated as:
+# We approximate them using TaylorSeries.jl.
 t = Taylor1(F, N)
 taylor_expansion = analytic_sol_func(t)
 a_true = taylor_expansion.coeffs.*fact
