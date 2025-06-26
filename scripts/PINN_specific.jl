@@ -1,6 +1,7 @@
 #=
 This script solves a third-order ordinary differential equation (ODE) using a
 Physics-Informed Neural Network (PINN) inspired method.
+Created based on the example available here: https://docs.sciml.ai/NeuralPDE/stable/examples/3rd/
 
 Instead of the neural network approximating the solution u(x) directly, it learns
 the optimal coefficients of a truncated power series that solves the ODE.
@@ -34,8 +35,8 @@ isdir("data") || mkpath("data")
 
 # Define the floating point type to use throughout the script (e.g., Float32).
 # Using Float32 is standard for neural networks as it's computationally faster.
-# F = Float32
-F = Float64
+F = Float32
+# F = Float64
 
 # ---------------------------------------------------------------------------
 # Step 2: Define the Mathematical Problem (The ODE)
@@ -69,16 +70,35 @@ domains = [x ∈ Interval(x_left, x_right)]
 analytic_sol_func(x) = (pi * x * (-x + (pi^2)*(2x - 3) + 1) - sin(pi*x)) / (pi^3)
 
 
+
+
+
 # ---------------------------------------------------------------------------
 # Step 3: Setup the Power Series and Neural Network
 # ---------------------------------------------------------------------------
 
 # We will approximate the solution u(x) with a truncated power series of degree N.
 # u(x) ≈ a₀ + a₁x/1! + a₂x²/2! + ... + aₙxⁿ/N!
-N = 5 # The degree of the highest power term in the series.
+N = 10 # The degree of the highest power term in the series.
 
 # Pre-calculate factorials (0!, 1!, ..., N!) for use in the series.
 fact = factorial.(0:N)
+
+
+num_supervised = 5 # The number of coefficients we will supervise during training.
+supervised_weight = F(1.0)  # Weight for the supervised loss term in the total loss function.
+
+
+# The true coefficients a_n are the n-th derivatives of the analytic solution at x=0.
+# We approximate them using TaylorSeries.jl.
+t = Taylor1(F, N)
+taylor_expansion = analytic_sol_func(t)
+a_true = taylor_expansion.coeffs.*fact
+
+training_data = a_true[1:num_supervised]
+
+
+
 
 # Create a set of points inside the domain to enforce the ODE. These are called "collocation points".
 num_points = 1000
@@ -86,7 +106,7 @@ xs = range(x_left, x_right, length=num_points)
 
 # Define a weight for the boundary condition part of the loss. This is a hyperparameter
 # that helps balance the importance of satisfying the ODE vs. the boundary conditions.
-bc_weight = F(1.0)
+bc_weight = F(100.0)
 
 # Define the neural network architecture using Lux.
 # It takes one dummy input and outputs N+1 values, which will be our coefficients a₀ to aₙ.
@@ -95,7 +115,9 @@ bc_weight = F(1.0)
 #   Lux.Dense(64, N+1)             # Output layer with N+1 neurons (one for each coefficient).
 # )
 coeff_net = Lux.Chain(
-  Lux.Dense(1, 64, tanh), # Hidden layer with 64 neurons and tanh activation.
+  Lux.Dense(1, 64, σ), # Hidden layer with 64 neurons and tanh activation.
+  # Lux.Dense(64, 64, σ), # Hidden layer with 64 neurons and tanh activation.
+  # Lux.Dense(64, 64, σ), # Hidden layer with 64 neurons and tanh activation.
   Lux.Dense(64, N+1)      # Output layer with N+1 neurons (one for each coefficient).
 )
 
@@ -136,8 +158,11 @@ function loss_fn(p_net, _)
              abs2(u_approx(x_right)  - F(cos(pi))) +
              abs2(Du_approx(x_right) - F(1.0))
 
+  
+  loss_supervised = sum(abs2, a_vec[1:num_supervised] - training_data) / num_supervised 
+  # loss_supervised = 0.0 # This is a placeholder for any supervised loss, if needed.
   # The total loss is a weighted sum of the two components.
-  return loss_pde + bc_weight * loss_bc
+  return loss_pde + bc_weight * loss_bc + supervised_weight * loss_supervised
 end
 
 
@@ -185,21 +210,21 @@ res = solve(prob,
 
 
 
-# # ---------------- stage 2 : LBFGS ----------------
-# maxiters_lbfgs = 100
-# p_bar2 = Progress(maxiters_lbfgs, desc = "LBFGS fine-tune... ")
-# iter2  = 0
-# cb2 = function (_, l)
-#     global iter2 += 1
-#     ProgressMeter.next!(p_bar2; showvalues = [(:iter, iter2), (:loss, l)])
-#     return false
-# end
+# ---------------- stage 2 : LBFGS ----------------
+maxiters_lbfgs = 100
+p_bar2 = Progress(maxiters_lbfgs, desc = "LBFGS fine-tune... ")
+iter2  = 0
+cb2 = function (_, l)
+    global iter2 += 1
+    ProgressMeter.next!(p_bar2; showvalues = [(:iter, iter2), (:loss, l)])
+    return false
+end
 
-# prob2 = remake(prob; u0 = res.u)
-# res   = solve(prob2,
-#               OptimizationOptimJL.LBFGS();
-#               callback = cb2,
-#               maxiters = maxiters_lbfgs)
+prob2 = remake(prob; u0 = res.u)
+res   = solve(prob2,
+              OptimizationOptimJL.LBFGS();
+              callback = cb2,
+              maxiters = maxiters_lbfgs)
 
 # Extract the final, trained parameters from the result.
 p_trained = res.u
@@ -246,11 +271,7 @@ savefig(plot_error, "data/error.png")
 
 # --- Plot 3: Plot the error of the learned coefficients ---
 
-# The true coefficients a_n are the n-th derivatives of the analytic solution at x=0.
-# We approximate them using TaylorSeries.jl.
-t = Taylor1(F, N)
-taylor_expansion = analytic_sol_func(t)
-a_true = taylor_expansion.coeffs.*fact
+
 
 # Calculate the absolute error between the true and learned coefficients.
 # Clamp the error to a minimum value to avoid log(0) issues.
