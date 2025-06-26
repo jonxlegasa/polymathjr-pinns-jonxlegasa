@@ -45,9 +45,6 @@ F = Float64
 @parameters x
 @variables  u(..)
 
-x_left = F(0.0)  # Left boundary of the domain
-x_right = F(1.0) # Right boundary of the domain
-
 # Define differential operators for convenience.
 Dxxx = Differential(x)^3
 Dx   = Differential(x)
@@ -62,7 +59,7 @@ bcs = [u(0.0) ~ 0.0,        # u(x) at x=0 is 0
        Dx(u(1.0)) ~ 1.0]      # The first derivative u'(x) at x=1 is 1
 
 # Define the domain over which the ODE is valid.
-domains = [x ∈ Interval(x_left, x_right)]
+domains = [x ∈ Interval(F(0.0), F(1.0))]
 
 # For verification, we define the true, known analytic solution to the ODE.
 # This will be used to calculate the error of our approximation.
@@ -75,28 +72,23 @@ analytic_sol_func(x) = (pi * x * (-x + (pi^2)*(2x - 3) + 1) - sin(pi*x)) / (pi^3
 
 # We will approximate the solution u(x) with a truncated power series of degree N.
 # u(x) ≈ a₀ + a₁x/1! + a₂x²/2! + ... + aₙxⁿ/N!
-N = 5 # The degree of the highest power term in the series.
+N = 10 # The degree of the highest power term in the series.
 
 # Pre-calculate factorials (0!, 1!, ..., N!) for use in the series.
 fact = factorial.(0:N)
 
 # Create a set of points inside the domain to enforce the ODE. These are called "collocation points".
 num_points = 1000
-xs = range(x_left, x_right, length=num_points)
+xs = range(F(0.0), F(1.0), length=num_points)
 
 # Define a weight for the boundary condition part of the loss. This is a hyperparameter
 # that helps balance the importance of satisfying the ODE vs. the boundary conditions.
 bc_weight = F(1.0)
 
 # Define the neural network architecture using Lux.
-# It takes one dummy input and outputs N+1 values, which will be our coefficients a₀ to aₙ.
-# coeff_net = Lux.Chain(
-#   Lux.Dense(1, 64, sin), # Hidden layer with 100 neurons and sigmoid activation.
-#   Lux.Dense(64, N+1)             # Output layer with N+1 neurons (one for each coefficient).
-# )
 coeff_net = Lux.Chain(
-  Lux.Dense(1, 64, tanh), # Hidden layer with 64 neurons and tanh activation.
-  Lux.Dense(64, N+1)      # Output layer with N+1 neurons (one for each coefficient).
+    Lux.Recurrence(Lux.GRUCell(1 => 64)), # Processes a sequence, outputs its final hidden state (size 64)
+    Lux.Dense(64 => N+1)                 # Maps the final state to all N+1 coefficients at once
 )
 
 # Initialize the network's parameters (p) and state (st).
@@ -113,12 +105,13 @@ p_init_ca = ComponentArray(p_init)
 # Step 4: Define the Loss Function
 # ---------------------------------------------------------------------------
 
-# The loss function measures how "wrong" our current approximation is. The optimizer's
-# job is to find the network parameters `p_net` that minimize this function.
 function loss_fn(p_net, _)
-  # First, run the network to get the current vector of power series coefficients.
-  # The network takes a dummy input [0.0] and outputs our N+1 coefficients.
-  a_vec = first(coeff_net([x_left], p_net, st))[:, 1]
+  dummy_input_sequence = [zeros(F, 1) for _ in 1:(N + 1)]
+
+  # Run the network. It processes the sequence and the dense layer maps the RNN's
+  # final state to our vector of coefficients. The output is a (N+1, 1) matrix.
+  a_vec_matrix, _ = coeff_net(dummy_input_sequence, p_net, st)
+  a_vec = a_vec_matrix[:, 1] # Extract the vector of coefficients
 
   # Define the approximate solution and its derivatives using the coefficients from the network.
   # This is the power series representation: u(x) = Σ aᵢ * x^(i-1) / (i-1)!
@@ -132,14 +125,13 @@ function loss_fn(p_net, _)
 
   # Calculate the loss from the boundary conditions.
   # This is the sum of squared errors for each boundary condition.
-  loss_bc  = abs2(u_approx(x_left)  - F(0.0)) +
-             abs2(u_approx(x_right)  - F(cos(pi))) +
-             abs2(Du_approx(x_right) - F(1.0))
+  loss_bc  = abs2(u_approx(F(0.0))  - F(0.0)) +
+             abs2(u_approx(F(1.0))  - F(cos(pi))) +
+             abs2(Du_approx(F(1.0)) - F(1.0))
 
   # The total loss is a weighted sum of the two components.
   return loss_pde + bc_weight * loss_bc
 end
-
 
 # ---------------------------------------------------------------------------
 # Step 5: Train the Neural Network
@@ -179,32 +171,35 @@ prob   = OptimizationProblem(optfun, p_init_ca)
 
 # Now, we solve the problem using the Adam optimizer.
 res = solve(prob,
-            OptimizationOptimisers.Adam(F(1e-3)); # Adam optimizer with a learning rate of 0.001
+            OptimizationOptimisers.Adam(F(1e-1)); # Adam optimizer with a learning rate of 0.001
             callback=callback,
             maxiters=maxiters)
 
 
 
-# # ---------------- stage 2 : LBFGS ----------------
-# maxiters_lbfgs = 100
-# p_bar2 = Progress(maxiters_lbfgs, desc = "LBFGS fine-tune... ")
-# iter2  = 0
-# cb2 = function (_, l)
-#     global iter2 += 1
-#     ProgressMeter.next!(p_bar2; showvalues = [(:iter, iter2), (:loss, l)])
-#     return false
-# end
+# ---------------- stage 2 : LBFGS ----------------
+maxiters_lbfgs = 100
+p_bar2 = Progress(maxiters_lbfgs, desc = "LBFGS fine-tune... ")
+iter2  = 0
+cb2 = function (_, l)
+    global iter2 += 1
+    ProgressMeter.next!(p_bar2; showvalues = [(:iter, iter2), (:loss, l)])
+    return false
+end
 
-# prob2 = remake(prob; u0 = res.u)
-# res   = solve(prob2,
-#               OptimizationOptimJL.LBFGS();
-#               callback = cb2,
-#               maxiters = maxiters_lbfgs)
+prob2 = remake(prob; u0 = res.u)
+res   = solve(prob2,
+              OptimizationOptimJL.LBFGS();
+              callback = cb2,
+              maxiters = maxiters_lbfgs)
 
 # Extract the final, trained parameters from the result.
 p_trained = res.u
 # Run the network one last time with the trained parameters to get the final coefficients.
-a_learned = first(coeff_net([F(0.0)], p_trained, st))[:, 1]
+dummy_input_sequence = [zeros(F, 1) for _ in 1:(N + 1)]
+a_learned_matrix, _ = coeff_net(dummy_input_sequence, p_trained, st)
+a_learned = a_learned_matrix[:, 1]
+# a_learned = first(coeff_net([F(0.0)], p_trained, st))[:, 1]
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +216,7 @@ display(a_learned)
 u_predict_func(x) = sum(a_learned[i]*x^(i-1)/fact[i] for i in 1:N+1)
 
 # Generate a dense set of points for smooth plotting.
-x_plot    = x_left:F(0.01):x_right
+x_plot    = F(0.0):F(0.01):F(1.0)
 u_real    = analytic_sol_func.(x_plot)
 u_predict = u_predict_func.(x_plot)
 
@@ -259,7 +254,7 @@ coeff_error = max.(abs.(a_true - a_learned),F(1e-20))
 plot_coeffs = plot(0:N, coeff_error,
                   yscale=:log10, # Use a logarithmic scale for the y-axis
                   title="Error in Learned Coefficients (log scale)",
-                  xlabel="Coefficient Index",
+                  xlabel="Coefficient Index (n for aₙ)",
                   ylabel="Absolute Error",
                   label="Coefficient Error",
                   legend=:topright)
