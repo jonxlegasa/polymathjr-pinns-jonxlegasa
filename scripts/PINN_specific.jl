@@ -91,7 +91,7 @@ bc_weight = F(1.0)
 # Define the neural network architecture using Lux.
 # It takes one dummy input and outputs N+1 values, which will be our coefficients a₀ to aₙ.
 # coeff_net = Lux.Chain(
-#   Lux.Dense(1, 64, sin), # Hidden layer with 100 neurons and sigmoid activation.
+#   Lux.Dense(1, 64, σ), # Hidden layer with 100 neurons and sigmoid activation.
 #   Lux.Dense(64, N+1)             # Output layer with N+1 neurons (one for each coefficient).
 # )
 coeff_net = Lux.Chain(
