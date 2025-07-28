@@ -52,12 +52,14 @@ x_left = F(0.0)  # Left boundary of the domain
 x_right = F(1.0) # Right boundary of the domain
 
 # Define differential operators for convenience.
-Dxxx = Differential(x)^3
-Dx = Differential(x)
+# Dxxx = Differential(x)^3
+Dx = Differential(x) # we are considering ay'+ ay = 0 with constant coefficients
 
 # Define the ordinary differential equation.
 # Dxxx(u(x)) = cos(pi*x)
-equation = Dxxx(u(x)) ~ cos(pi * x)
+# equation = Dxxx(u(x)) ~ cos(pi * x)
+
+equation = Dx(u(x)) + u(x) ~ 0
 
 # Define the boundary conditions for the ODE.
 #= bcs = [u(0.0) ~ 0.0,        # u(x) at x=0 is 0
