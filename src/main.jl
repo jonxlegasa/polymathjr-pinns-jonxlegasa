@@ -18,7 +18,6 @@ function setup_training_run(run_number::Int64, training_examples::Vector{Float64
     mkdir(data_dir)
     println("Created data directory: $data_dir")
   end
-
   # Format run number with zero padding (01, 02, 03, etc.)
   run_number_formatted = lpad(run_number, 2, '0')
   # Create training run directory
@@ -96,4 +95,5 @@ example_training_runs = [
 
 Plugboard.generate_random_ode_dataset(s)
 
+# Uncomment to run the example
 run_training_sequence(example_training_runs)

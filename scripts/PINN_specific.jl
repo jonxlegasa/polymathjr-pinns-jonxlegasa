@@ -21,6 +21,8 @@ The process involves:
 # You may need to install these packages first. In the Julia REPL, press `]` to enter Pkg mode, then run:
 # add Lux, ModelingToolkit, NeuralPDE, Optimization, OptimizationOptimJL, OptimizationOptimisers, Zygote, ComponentArrays, Plots, ProgressMeter
 
+module PINNSpecific
+
 using Lux, ModelingToolkit
 using Optimization, OptimizationOptimJL, OptimizationOptimisers
 using Zygote
@@ -49,18 +51,20 @@ F = Float32
 x_left = F(0.0)  # Left boundary of the domain
 x_right = F(1.0) # Right boundary of the domain
 
-# Define differential operators for convenience.
-Dxxx = Differential(x)^3
-Dx = Differential(x)
+# Dxxx = Differential(x)^3
+Dx = Differential(x) # we are considering ay'+ ay = 0 with constant coefficients
 
 # Define the ordinary differential equation.
 # Dxxx(u(x)) = cos(pi*x)
-equation = Dxxx(u(x)) ~ cos(pi * x)
+# equation = Dxxx(u(x)) ~ cos(pi * x)
+
+equation = Dx(u(x)) + u(x) ~ 0
 
 # Define the boundary conditions for the ODE.
-bcs = [u(0.0) ~ 0.0,        # u(x) at x=0 is 0
+#= bcs = [u(0.0) ~ 0.0,        # u(x) at x=0 is 0
   u(1.0) ~ cos(pi),   # u(x) at x=1 is -1
   Dx(u(1.0)) ~ 1.0]      # The first derivative u'(x) at x=1 is 1
+=#
 
 # Define the domain over which the ODE is valid.
 domains = [x ∈ Interval(x_left, x_right)]
@@ -68,9 +72,6 @@ domains = [x ∈ Interval(x_left, x_right)]
 # For verification, we define the true, known analytic solution to the ODE.
 # This will be used to calculate the error of our approximation.
 analytic_sol_func(x) = (pi * x * (-x + (pi^2) * (2x - 3) + 1) - sin(pi * x)) / (pi^3)
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -89,16 +90,14 @@ num_supervised = 5 # The number of coefficients we will supervise during trainin
 supervised_weight = F(1.0)  # Weight for the supervised loss term in the total loss function.
 
 
+#= This is where I have to replace the approximation to the ODE with the
+coefficients generated from the plugboardmethod =#
 # The true coefficients a_n are the n-th derivatives of the analytic solution at x=0.
 # We approximate them using TaylorSeries.jl.
 t = Taylor1(F, N)
 taylor_expansion = analytic_sol_func(t)
 a_true = taylor_expansion.coeffs .* fact
-
-training_data = a_true[1:num_supervised]
-
-
-
+training_data = a_true[1:num_supervised] # replace this with the plugboard coefficients
 
 # Create a set of points inside the domain to enforce the ODE. These are called "collocation points".
 num_points = 1000
@@ -291,3 +290,5 @@ println("\nPlots saved to 'data' directory.")
 println("- solution_comparison.png")
 println("- error.png")
 println("- coefficient_error.png")
+
+end

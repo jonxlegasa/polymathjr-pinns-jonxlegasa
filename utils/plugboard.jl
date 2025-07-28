@@ -11,7 +11,6 @@ struct Settings
   dataset_size::Int
 end
 
-# Get user inputs - you can use this feature in plugboard github repo
 function get_user_inputs()
   println("The Plugboard: Randomized ODE Generator")
   println("=================================")
@@ -105,7 +104,6 @@ function generate_random_ode_dataset(s::Settings)
   ode_order = s.ode_order
   poly_degree = s.poly_degree
   # ode_order, poly_degree, dataset_size = get_user_inputs()
-
   println("\ngenerating random α matrices for:")
   println("- ode order: $ode_order")
   println("- polynomial degree: $poly_degree")
@@ -146,17 +144,19 @@ function generate_random_ode_dataset(s::Settings)
       isdir("data") || mkpath("data") # ensure a data folder exists
       json_string = JSON.json(existing_data)
       write("./data/dataset.json", json_string)
+
+
     catch e
       println("failed to solve this ode: ", e)
       return nothing
     end
   end
+
+
+  # s = Settings(1, 0, 10)
+
+  # generate_random_ode_dataset(s)
 end
-
-
-# s = Settings(1, 0, 10)
-
-# generate_random_ode_dataset(s)
-
 export Settings, generate_random_ode_dataset
+
 end
