@@ -58,9 +58,13 @@ Dx = Differential(x)
 equation = Dxxx(u(x)) ~ cos(pi * x)
 
 # Define the boundary conditions for the ODE.
+
+# bcs is not used
+#=
 bcs = [u(0.0) ~ 0.0,        # u(x) at x=0 is 0
   u(1.0) ~ cos(pi),   # u(x) at x=1 is -1
   Dx(u(1.0)) ~ 1.0]      # The first derivative u'(x) at x=1 is 1
+=#
 
 # Define the domain over which the ODE is valid.
 domains = [x ∈ Interval(x_left, x_right)]
@@ -68,10 +72,6 @@ domains = [x ∈ Interval(x_left, x_right)]
 # For verification, we define the true, known analytic solution to the ODE.
 # This will be used to calculate the error of our approximation.
 analytic_sol_func(x) = (pi * x * (-x + (pi^2) * (2x - 3) + 1) - sin(pi * x)) / (pi^3)
-
-
-
-
 
 # ---------------------------------------------------------------------------
 # Step 3: Setup the Power Series and Neural Network
@@ -154,9 +154,7 @@ function loss_fn(p_net, _)
 
   # Calculate the loss from the boundary conditions.
   # This is the sum of squared errors for each boundary condition.
-  loss_bc = abs2(u_approx(x_left) - F(0.0)) +
-            abs2(u_approx(x_right) - F(cos(pi))) +
-            abs2(Du_approx(x_right) - F(1.0))
+  loss_bc = abs2(u_approx(x_left) - F(0.0)) + abs2(u_approx(x_right) - F(0) + abs2(Du_approx(x_right) - F(1.0))
 
 
   loss_supervised = sum(abs2, a_vec[1:num_supervised] - training_data) / num_supervised
