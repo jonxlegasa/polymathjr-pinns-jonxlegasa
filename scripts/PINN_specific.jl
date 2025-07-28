@@ -21,6 +21,8 @@ The process involves:
 # You may need to install these packages first. In the Julia REPL, press `]` to enter Pkg mode, then run:
 # add Lux, ModelingToolkit, NeuralPDE, Optimization, OptimizationOptimJL, OptimizationOptimisers, Zygote, ComponentArrays, Plots, ProgressMeter
 
+module PINNSpecific
+
 using Lux, ModelingToolkit
 using Optimization, OptimizationOptimJL, OptimizationOptimisers
 using Zygote
@@ -50,6 +52,7 @@ x_left = F(0.0)  # Left boundary of the domain
 x_right = F(1.0) # Right boundary of the domain
 
 # Define differential operators for convenience.
+<<<<<<< HEAD
 Dxxx = Differential(x)^3
 Dx = Differential(x)
 
@@ -62,6 +65,19 @@ equation = Dxxx(u(x)) ~ cos(pi * x)
 # bcs is not used
 #=
 bcs = [u(0.0) ~ 0.0,        # u(x) at x=0 is 0
+=======
+# Dxxx = Differential(x)^3
+Dx = Differential(x) # we are considering ay'+ ay = 0 with constant coefficients
+
+# Define the ordinary differential equation.
+# Dxxx(u(x)) = cos(pi*x)
+# equation = Dxxx(u(x)) ~ cos(pi * x)
+
+equation = Dx(u(x)) + u(x) ~ 0
+
+# Define the boundary conditions for the ODE.
+#= bcs = [u(0.0) ~ 0.0,        # u(x) at x=0 is 0
+>>>>>>> 330a7c99eeeec47ec4f56d67678faaee2f93d485
   u(1.0) ~ cos(pi),   # u(x) at x=1 is -1
   Dx(u(1.0)) ~ 1.0]      # The first derivative u'(x) at x=1 is 1
 =#
@@ -89,16 +105,22 @@ num_supervised = 5 # The number of coefficients we will supervise during trainin
 supervised_weight = F(1.0)  # Weight for the supervised loss term in the total loss function.
 
 
+#= This is where I have to replace the approximation to the ODE with the
+coefficients generated from the plugboardmethod =#
 # The true coefficients a_n are the n-th derivatives of the analytic solution at x=0.
 # We approximate them using TaylorSeries.jl.
 t = Taylor1(F, N)
 taylor_expansion = analytic_sol_func(t)
 a_true = taylor_expansion.coeffs .* fact
+<<<<<<< HEAD
 
 training_data = a_true[1:num_supervised]
 
 
+=======
+>>>>>>> 330a7c99eeeec47ec4f56d67678faaee2f93d485
 
+training_data = a_true[1:num_supervised] # replace this with the plugboard coefficients
 
 # Create a set of points inside the domain to enforce the ODE. These are called "collocation points".
 num_points = 1000
@@ -154,7 +176,13 @@ function loss_fn(p_net, _)
 
   # Calculate the loss from the boundary conditions.
   # This is the sum of squared errors for each boundary condition.
+<<<<<<< HEAD
   loss_bc = abs2(u_approx(x_left) - F(0.0)) + abs2(u_approx(x_right) - F(0) + abs2(Du_approx(x_right) - F(1.0))
+=======
+  loss_bc = abs2(u_approx(x_left) - F(0.0)) +
+            abs2(u_approx(x_right) - F(cos(pi))) +
+            abs2(Du_approx(x_right) - F(1.0))
+>>>>>>> 330a7c99eeeec47ec4f56d67678faaee2f93d485
 
 
   loss_supervised = sum(abs2, a_vec[1:num_supervised] - training_data) / num_supervised
@@ -289,3 +317,9 @@ println("\nPlots saved to 'data' directory.")
 println("- solution_comparison.png")
 println("- error.png")
 println("- coefficient_error.png")
+<<<<<<< HEAD
+=======
+
+
+end
+>>>>>>> 330a7c99eeeec47ec4f56d67678faaee2f93d485
