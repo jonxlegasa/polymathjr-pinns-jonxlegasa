@@ -3,7 +3,9 @@ using Dates
 include("../utils/plugboard.jl")
 using .Plugboard
 
-function setup_training_run(run_number::Int, training_examples::Vector{Int})
+s = Plugboard.Settings(1, 0, 1)
+
+function setup_training_run(run_number::Int64, training_examples::Vector{Float64})
   """
   Creates a training run directory and output file with specified naming convention.
   Args:
@@ -48,7 +50,16 @@ function setup_training_run(run_number::Int, training_examples::Vector{Int})
   return training_run_dir, output_file
 end
 
-function run_training_sequence(training_examples_array::Vector{Vector{Int}})
+
+#=
+# This will generate a training set and a becnhmark dataset
+#
+=#
+function generate_datasets()
+end
+
+
+function run_training_sequence(training_examples_array::Vector{Vector{Float64}})
   """
   Runs a sequence of training runs with different training example configurations.
 
@@ -82,5 +93,7 @@ end
 example_training_runs = [
   [4.0, -5.0, 3.125, -0.6510416666666666, 0.03390842013888889, -0.0003532127097800926, 6.13216510034883e-7, -1.5208742808404835e-10, 4.715012031375507e-15, -1.624163646169363e-20], # training run #01
 ]
+
+Plugboard.generate_random_ode_dataset(s)
 
 run_training_sequence(example_training_runs)

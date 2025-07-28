@@ -5,7 +5,13 @@ using TaylorSeries
 using Random
 using JSON
 
-# Get user inputs - unchanged
+struct Settings
+  ode_order::Int
+  poly_degree::Int
+  dataset_size::Int
+end
+
+# Get user inputs - you can use this feature in plugboard github repo
 function get_user_inputs()
   println("The Plugboard: Randomized ODE Generator")
   println("=================================")
@@ -95,22 +101,25 @@ function solve_ode_series_closed_form(α_matrix, initial_conditions, num_terms)
 end
 
 # updated dataset generation function
-function generate_random_ode_dataset()
-  ode_order, poly_degree, dataset_size = get_user_inputs()
+function generate_random_ode_dataset(s::Settings)
+  ode_order = s.ode_order
+  poly_degree = s.poly_degree
+  # ode_order, poly_degree, dataset_size = get_user_inputs()
+
   println("\ngenerating random α matrices for:")
   println("- ode order: $ode_order")
   println("- polynomial degree: $poly_degree")
 
   series_coeffs = []
 
-  for k in 1:dataset_size
-    α_matrix = generate_random_alpha_matrix(ode_order, poly_degree)
+  for k in 1:s.dataset_size
+    α_matrix = generate_random_alpha_matrix(s.ode_order, s.poly_degree)
     println("\n--- example #$k ---")
     println("α matrix:")
     display(α_matrix)
 
     # generate exactly ode_order initial conditions
-    initial_conditions = float64[]
+    initial_conditions = Float64[]
     for i in 0:(ode_order-1)
       if i == 0
         push!(initial_conditions, rand(1:5))  # y(0) = a_0
@@ -121,33 +130,33 @@ function generate_random_ode_dataset()
       end
     end
 
-
     try
       # output taylor series and its coefficients
       taylor_series, series_coeffs = solve_ode_series_closed_form(α_matrix, initial_conditions, 10)
-
       println("truncated taylor series: ", taylor_series)
       println("truncated series coefficients: ", series_coeffs)
+
       # read existing data
-      existing_data = json.parsefile("./data/dataset.json")
-      # append the current value
-      push!(existing_data["series coefficient"], series_coeffs)
+      existing_data = JSON.parsefile("./data/dataset.json")
 
+      println(k)
+
+      # use alpha matrix as key, series coefficients as value
+      existing_data[string(α_matrix)] = series_coeffs
       isdir("data") || mkpath("data") # ensure a data folder exists
-      json_string = json.json(existing_data)
+      json_string = JSON.json(existing_data)
       write("./data/dataset.json", json_string)
-
-      return series_coeffs
     catch e
       println("failed to solve this ode: ", e)
       return nothing
     end
-
-
   end
-
 end
 
-generate_random_ode_dataset()
 
+# s = Settings(1, 0, 10)
+
+# generate_random_ode_dataset(s)
+
+export Settings, generate_random_ode_dataset
 end
