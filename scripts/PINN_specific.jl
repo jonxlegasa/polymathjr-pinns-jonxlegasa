@@ -94,10 +94,13 @@ supervised_weight = F(1.0)  # Weight for the supervised loss term in the total l
 coefficients generated from the plugboardmethod =#
 # The true coefficients a_n are the n-th derivatives of the analytic solution at x=0.
 # We approximate them using TaylorSeries.jl.
-t = Taylor1(F, N)
-taylor_expansion = analytic_sol_func(t)
-a_true = taylor_expansion.coeffs .* fact
-training_data = a_true[1:num_supervised] # replace this with the plugboard coefficients
+# t = Taylor1(F, N)
+# taylor_expansion = analytic_sol_func(t)
+# a_true = taylor_expansion.coeffs .* fact
+# training_data = a_true[1:num_supervised] # replace this with the plugboard coefficients
+
+#Plugboard Coefficients
+
 
 # Create a set of points inside the domain to enforce the ODE. These are called "collocation points".
 num_points = 1000

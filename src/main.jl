@@ -1,9 +1,10 @@
 using Dates
+using JSON
 
 include("../utils/plugboard.jl")
 using .Plugboard
 
-s = Plugboard.Settings(1, 0, 1)
+s = Plugboard.Settings(1, 0, 10)
 
 function setup_training_run(run_number::Int64, training_examples::Vector{Float64})
   """
@@ -49,16 +50,7 @@ function setup_training_run(run_number::Int64, training_examples::Vector{Float64
   return training_run_dir, output_file
 end
 
-
-#=
-# This will generate a training set and a becnhmark dataset
-#
-=#
-function generate_datasets()
-end
-
-
-function run_training_sequence(training_examples_array::Vector{Vector{Float64}})
+function run_training_sequence()
   """
   Runs a sequence of training runs with different training example configurations.
 
@@ -66,34 +58,28 @@ function run_training_sequence(training_examples_array::Vector{Vector{Float64}})
       training_examples_array: Array of arrays, where each inner array contains
                              the training examples for that particular training run
   """
+  # Load the JSON data
+  dataset = JSON.parsefile("./data/dataset.json")
 
-  for (run_idx, training_examples) in enumerate(training_examples_array)
+  # Loop through each entry in the JSON object
+  for (run_idx, (alpha_matrix_key, series_coeffs)) in enumerate(dataset)
     println("\n" * "="^50)
     println("Starting Training Run $run_idx")
     println("="^50)
-
-    # Setup the training run directory and files
-    training_dir, info_file = setup_training_run(run_idx, training_examples)
-
-    # Here you would add your training loop logic
-    # For now, we'll just simulate with a comment
-    println("Training examples for this run: $training_examples")
-    println("Ready for training implementation...")
-
+    println("Processing alpha matrix: $alpha_matrix_key")
+    println("Series coefficients: $series_coeffs")
+    # Convert string key back to matrix
+    alpha_matrix = eval(Meta.parse(alpha_matrix_key))
+    println("Converted alpha matrix: ", alpha_matrix)
     # TODO: Add the training implementation for the PINN Here
-    # for num_examples in training_examples
-    # PINN training here
-    # end
+    # PINN training here using:
+    # - alpha_matrix (converted from key)
+    # - series_coeffs as target
+    println("Ready for PINN training with this alpha matrix and series coefficients...")
   end
 end
-
-# Example usage:
-# Define training examples for multiple runs
-example_training_runs = [
-  [4.0, -5.0, 3.125, -0.6510416666666666, 0.03390842013888889, -0.0003532127097800926, 6.13216510034883e-7, -1.5208742808404835e-10, 4.715012031375507e-15, -1.624163646169363e-20], # training run #01
-]
 
 Plugboard.generate_random_ode_dataset(s)
 
 # Uncomment to run the example
-run_training_sequence(example_training_runs)
+run_training_sequence()

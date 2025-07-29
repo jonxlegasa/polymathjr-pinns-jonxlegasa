@@ -133,19 +133,13 @@ function generate_random_ode_dataset(s::Settings)
       taylor_series, series_coeffs = solve_ode_series_closed_form(α_matrix, initial_conditions, 10)
       println("truncated taylor series: ", taylor_series)
       println("truncated series coefficients: ", series_coeffs)
-
       # read existing data
       existing_data = JSON.parsefile("./data/dataset.json")
-
-      println(k)
-
       # use alpha matrix as key, series coefficients as value
       existing_data[string(α_matrix)] = series_coeffs
       isdir("data") || mkpath("data") # ensure a data folder exists
       json_string = JSON.json(existing_data)
       write("./data/dataset.json", json_string)
-
-
     catch e
       println("failed to solve this ode: ", e)
       return nothing
