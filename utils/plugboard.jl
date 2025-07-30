@@ -99,61 +99,69 @@ function solve_ode_series_closed_form(α_matrix, initial_conditions, num_terms)
   return Taylor1(series_coeffs), series_coeffs
 end
 
-function generate_random_ode_dataset(s::Settings, num_of_training_runs::Int)
+function generate_random_ode_dataset(s::Settings, batch_index::Int)
   ode_order = s.ode_order
   poly_degree = s.poly_degree
   println("\ngenerating random α matrices for:")
   println("- ode order: $ode_order")
   println("- polynomial degree: $poly_degree")
-  
-  # Loop through training runs first
-  for run_k in 1:num_of_training_runs
-    dataset_key = lpad(run_k, 2, '0')
-    println("\n=== Dataset $dataset_key ===")
-    # Generate dataset_size examples for this training run
-    for example_k in 1:s.dataset_size
-      α_matrix = generate_random_alpha_matrix(s.ode_order, s.poly_degree)
-      println("\n--- Dataset $dataset_key, Example #$example_k ---")
-      println("α matrix:")
-      display(α_matrix)
-      # generate exactly ode_order initial conditions
-      initial_conditions = Float64[]
-      for i in 0:(ode_order-1)
-        if i == 0
-          push!(initial_conditions, rand(1:5))  # y(0) = a_0
-          println("y(0) = ", initial_conditions[end])
-        elseif i == 1
-          push!(initial_conditions, rand(1:5))  # y'(0) = a_1
-          println("y'(0) = ", initial_conditions[end])
-        end
-      end
-      try
-        # output taylor series and its coefficients
-        taylor_series, series_coeffs = solve_ode_series_closed_form(α_matrix, initial_conditions, 10)
-        println("truncated taylor series: ", taylor_series)
-        println("truncated series coefficients: ", series_coeffs)
-        # read existing data
-        existing_data = if isfile("./data/dataset.json")
-          JSON.parsefile("./data/dataset.json")
-        else
-          Dict()
-        end
-        # Initialize training run if it doesn't exist
-        if !haskey(existing_data, dataset_key)
-          existing_data[dataset_key] = Dict()
-        end
-        # use alpha matrix as key, series coefficients as value within the training run
-        existing_data[dataset_key][string(α_matrix)] = series_coeffs
-        isdir("data") || mkpath("data") # ensure a data folder exists
-        json_string = JSON.json(existing_data)
-        write("./data/dataset.json", json_string)
-      catch e
-        println("failed to solve this ode: ", e)
-        continue  # continue to next example instead of returning
+  println("\nDataset generation complete!")
+
+  # Generate dataset_size examples
+  for example_k in 1:s.dataset_size
+    α_matrix = generate_random_alpha_matrix(s.ode_order, s.poly_degree)
+    println("\n--- Example #$example_k ---")
+    println("α matrix:")
+    display(α_matrix)
+    # generate exactly ode_order initial conditions
+    initial_conditions = Float64[]
+    for i in 0:(ode_order-1)
+      if i == 0
+        push!(initial_conditions, rand(1:5))  # y(0) = a_0
+        println("y(0) = ", initial_conditions[end])
+      elseif i == 1
+        push!(initial_conditions, rand(1:5))  # y'(0) = a_1
+        println("y'(0) = ", initial_conditions[end])
       end
     end
+    try
+      # output taylor series and its coefficients
+      taylor_series, series_coeffs = solve_ode_series_closed_form(α_matrix, initial_conditions, 10)
+      println("truncated taylor series: ", taylor_series)
+      println("truncated series coefficients: ", series_coeffs)
+      # read existing data
+      existing_data = if isfile("./data/dataset.json")
+        JSON.parsefile("./data/dataset.json")
+      else
+        Dict()
+      end
+
+      # read existing data
+      existing_data = if isfile("./data/dataset.json")
+        JSON.parsefile("./data/dataset.json")
+      else
+        Dict()
+      end
+
+      # Determine which training run this is based on existing data
+      dataset_key = lpad(batch_index, 2, '0')
+
+      # Initialize dataset key if it doesn't exist
+      if !haskey(existing_data, dataset_key)
+        existing_data[dataset_key] = Dict()
+      end
+
+      # use alpha matrix as key, series coefficients as value within the dataset batch
+      existing_data[dataset_key][string(α_matrix)] = series_coeffs
+
+      isdir("data") || mkpath("data") # ensure a data folder exists
+      json_string = JSON.json(existing_data)
+      write("./data/dataset.json", json_string)
+    catch e
+      println("failed to solve this ode: ", e)
+      continue  # continue to next example instead of returning
+    end
   end
-  println("\nDataset generation complete!")
 end
 
 

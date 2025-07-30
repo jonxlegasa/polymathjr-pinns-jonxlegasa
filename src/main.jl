@@ -4,7 +4,7 @@ using JSON
 include("../utils/plugboard.jl")
 using .Plugboard
 
-function setup_training_run(run_number::Int64, training_examples::Dict{String,Any})
+function setup_training_run(run_number::Int64, training_examples::Dict{String,Any}, batch_size::Any)
   """
   Creates a training run directory and output file with specified naming convention.
   Args:
@@ -31,12 +31,13 @@ function setup_training_run(run_number::Int64, training_examples::Dict{String,An
   # Get current date and time
   current_datetime = now()
 
+
   # Write training run information to file
   open(output_file, "w") do file
     println(file, "Training Run Information")
     println(file, "="^30)
     println(file, "Training Run Number: $run_number_formatted")
-    println(file, "Training Examples per Model: $training_examples")
+    println(file, "Training Examples per Model: $batch_size")
     println(file, "Training Run Commenced: $current_datetime")
     println(file, "="^30)
   end
@@ -63,13 +64,13 @@ function run_training_sequence(batch_sizes::Array{Int})
   # Load the JSON data
 
 
-  for k in batch_sizes
-    s = Plugboard.Settings(1, 0, k)
+  for (batch_index, k) in enumerate(batch_sizes)
+    s::Settings = Plugboard.Settings(1, 0, k)
     println("Batch size:", k)
 
     println("Batch_sizes length", length(batch_sizes))
 
-    Plugboard.generate_random_ode_dataset(s, length(batch_sizes))
+    Plugboard.generate_random_ode_dataset(s, batch_index)
 
     dataset = JSON.parsefile("./data/dataset.json")
 
@@ -81,10 +82,9 @@ function run_training_sequence(batch_sizes::Array{Int})
       println("Processing alpha matrix: $alpha_matrix_key")
       println("Series coefficients: $series_coeffs")
 
-      setup_training_run(run_idx, series_coeffs)
-
-
-      println(dataset["01"])
+      # Create the training dirs
+      run_number_formatted = lpad(run_idx, 2, '0')
+      setup_training_run(run_idx, series_coeffs, length(dataset[run_number_formatted]))
 
       # Convert string key back to matrix
       alpha_matrix = eval(Meta.parse(alpha_matrix_key))
@@ -98,7 +98,7 @@ function run_training_sequence(batch_sizes::Array{Int})
   end
 end
 
-batch = [1, 10]
+batch = [1, 10, 20, 30]
 
 # Uncomment to run the example
 run_training_sequence(batch)
