@@ -48,15 +48,30 @@ F = Float32
 @parameters x
 @variables u(..)
 
+# Do we compute x_right in loss_func??
 x_left = F(0.0)  # Left boundary of the domain
 x_right = F(1.0) # Right boundary of the domain
 
+#=
+# y(0) = 0
+# y'(0) = 1
+=#
+
 # Dxxx = Differential(x)^3
-Dx = Differential(x) # we are considering ay'+ ay = 0 with constant coefficients
+Dx::Symbolics.Differential = Differential(x) # we are considering ay'+ ay = 0 with constant coefficients
 
 # Define the ordinary differential equation.
 # Dxxx(u(x)) = cos(pi*x)
 # equation = Dxxx(u(x)) ~ cos(pi * x)
+
+# Dx(u(x)) + u(x) = 0 (ay'+by = 0, a,b != 0)
+
+#=
+#
+# Pass in the training data with the alpha_matrix
+# So you have a vector of equations
+#
+=#
 
 equation = Dx(u(x)) + u(x) ~ 0
 
@@ -71,8 +86,11 @@ domains = [x ∈ Interval(x_left, x_right)]
 
 # For verification, we define the true, known analytic solution to the ODE.
 # This will be used to calculate the error of our approximation.
-analytic_sol_func(x) = (pi * x * (-x + (pi^2) * (2x - 3) + 1) - sin(pi * x)) / (pi^3)
+# analytic_sol_func(x) = (pi * x * (-x + (pi^2) * (2x - 3) + 1) - sin(pi * x)) / (pi^3) # with the training data
 
+# TODO: Put the training data
+# benchmark baby!!!!
+# This could be a validator function
 
 # ---------------------------------------------------------------------------
 # Step 3: Setup the Power Series and Neural Network
@@ -99,7 +117,6 @@ coefficients generated from the plugboardmethod =#
 # a_true = taylor_expansion.coeffs .* fact
 # training_data = a_true[1:num_supervised] # replace this with the plugboard coefficients
 
-#Plugboard Coefficients
 
 
 # Create a set of points inside the domain to enforce the ODE. These are called "collocation points".
@@ -116,8 +133,15 @@ bc_weight = F(100.0)
 #   Lux.Dense(1, 64, σ), # Hidden layer with 100 neurons and sigmoid activation.
 #   Lux.Dense(64, N+1)             # Output layer with N+1 neurons (one for each coefficient).
 # )
+
+#=
+nrows, ncols = size(A)
+rows = size(A)[1]
+cols = size(A)[2]
+=#
+
 coeff_net = Lux.Chain(
-  Lux.Dense(1, 64, σ), # Hidden layer with 64 neurons and tanh activation.
+  Lux.Dense(size(ode_matrix), 64, σ), # Hidden layer with 64 neurons and tanh activation.
   # Lux.Dense(64, 64, σ), # Hidden layer with 64 neurons and tanh activation.
   # Lux.Dense(64, 64, σ), # Hidden layer with 64 neurons and tanh activation.
   Lux.Dense(64, N + 1)      # Output layer with N+1 neurons (one for each coefficient).
@@ -137,28 +161,32 @@ p_init_ca = ComponentArray(p_init)
 # Step 4: Define the Loss Function
 # ---------------------------------------------------------------------------
 
+# ADJUST THIS FOR ODE of first ORDER
+
+
 # The loss function measures how "wrong" our current approximation is. The optimizer's
 # job is to find the network parameters `p_net` that minimize this function.
-function loss_fn(p_net, _)
+function loss_fn(p_net, ode_matrix) # for loop in here
   # First, run the network to get the current vector of power series coefficients.
   # The network takes a dummy input [0.0] and outputs our N+1 coefficients.
-  a_vec = first(coeff_net([x_left], p_net, st))[:, 1]
+  a_vec = first(coeff_net([ode_matrix], p_net, st))[:, 1] # how do we adjust for a matrix
 
+  s::Settings = Plugboard.Settings(1, 0, k)
   # Define the approximate solution and its derivatives using the coefficients from the network.
   # This is the power series representation: u(x) = Σ aᵢ * x^(i-1) / (i-1)!
   u_approx(x) = sum(a_vec[i] * x^(i - 1) / fact[i] for i in 1:N+1)
   Du_approx(x) = sum(a_vec[i] * x^(i - 2) / fact[i-1] for i in 2:N+1) # First derivative
-  D3u_approx(x) = sum(a_vec[i] * x^(i - 4) / fact[i-3] for i in 4:N+1) # Third derivative
+  # D3u_approx(x) = sum(a_vec[i] * x^(i - 4) / fact[i-3] for i in 4:N+1) # Third derivative
 
   # Calculate the loss from the ODE itself (the PDE loss, though it's an ODE).
   # This is the mean squared error between the two sides of our equation over all collocation points.
-  loss_pde = sum(abs2, D3u_approx(xi) - cos(F(pi) * xi) for xi in xs) / num_points
+  loss_pde = sum(abs2, Du_approx(xi) + u_approx(xi) - 0 for xi in xs) / num_points # adjust this
 
   # Calculate the loss from the boundary conditions.
   # This is the sum of squared errors for each boundary condition.
-  loss_bc = abs2(u_approx(x_left) - F(0.0)) +
-            abs2(u_approx(x_right) - F(cos(pi))) +
-            abs2(Du_approx(x_right) - F(1.0))
+  loss_bc = abs2(u_approx(x_left) - F(0.0))
+            # abs2(u_approx(x_right) - F(cos(pi))) +
+            # abs2(Du_approx(x_right) - F(1.0)) # we might need this
 
 
   loss_supervised = sum(abs2, a_vec[1:num_supervised] - training_data) / num_supervised
@@ -172,6 +200,16 @@ end
 # Step 5: Train the Neural Network
 # ---------------------------------------------------------------------------
 
+# ---------------- stage 1 : ADAM ----------------
+
+#=
+# Adam training process:
+# - Cheaper
+# - More iterations
+# 
+=#
+
+# ---------------- progress bar ----------------
 maxiters = 500 # The total number of training iterations.
 p_bar = Progress(maxiters, desc="Training coefficient net...") # The progress bar.
 
@@ -210,9 +248,16 @@ res = solve(prob,
   callback=callback,
   maxiters=maxiters)
 
-
-
 # ---------------- stage 2 : LBFGS ----------------
+
+#=
+# LBFGS training process:
+# - More expensive
+# - Newton's method 2nd Hessian
+# - Less training runs
+=#
+
+
 maxiters_lbfgs = 100
 p_bar2 = Progress(maxiters_lbfgs, desc="LBFGS fine-tune... ")
 iter2 = 0
@@ -231,7 +276,9 @@ res = solve(prob2,
 # Extract the final, trained parameters from the result.
 p_trained = res.u
 # Run the network one last time with the trained parameters to get the final coefficients.
-a_learned = first(coeff_net([F(0.0)], p_trained, st))[:, 1]
+a_learned = first(coeff_net([F(0.0)], p_trained, st))[:, 1] 
+# TODO: for loop the PINN function against the vectors in TRAINING set
+# PINN would have to be a function
 
 
 # ---------------------------------------------------------------------------
@@ -273,13 +320,11 @@ savefig(plot_error, "data/error.png")
 
 # --- Plot 3: Plot the error of the learned coefficients ---
 
-
-
 # Calculate the absolute error between the true and learned coefficients.
 # Clamp the error to a minimum value to avoid log(0) issues.
-coeff_error = max.(abs.(a_true - a_learned), F(1e-20))
+coeff_error = max.(abs.(a_true - a_learned), F(1e-20)) # COMPUTES THE ERROR!!!!
 
-plot_coeffs = plot(0:N, coeff_error,
+plot_coeffs = plot(0:N, coeff_error, 
   yscale=:log10, # Use a logarithmic scale for the y-axis
   title="Error in Learned Coefficients (log scale)",
   xlabel="Coefficient Index",

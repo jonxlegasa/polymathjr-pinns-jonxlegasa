@@ -4,7 +4,7 @@ using JSON
 include("../utils/plugboard.jl")
 using .Plugboard
 
-function setup_training_run(run_number::Int64, training_examples::Dict{String,Any}, batch_size::Any)
+function setup_training_run(run_number::Int64, batch_size::Any)
   """
   Creates a training run directory and output file with specified naming convention.
   Args:
@@ -61,44 +61,62 @@ function run_training_sequence(batch_sizes::Array{Int})
       training_examples_array: Array of arrays, where each inner array contains
                              the training examples for that particular training run
   """
-  # Load the JSON data
-
-
   for (batch_index, k) in enumerate(batch_sizes)
     s::Settings = Plugboard.Settings(1, 0, k)
     println("Batch size:", k)
 
     println("Batch_sizes length", length(batch_sizes))
 
-    Plugboard.generate_random_ode_dataset(s, batch_index)
+    Plugboard.generate_random_ode_dataset(s, batch_index) # training data
+    # Plugboard.generate_random_ode_dataset(s, batch_index) # create the validation file
+
+
+    # TODO: have a variable that defines dataset.json and benchmark.json
 
     dataset = JSON.parsefile("./data/dataset.json")
 
+    # Create the training dirs
+    run_number_formatted = lpad(batch_index, 2, '0')
+    println("Beginining training run for:", batch_index)
+
+    println("\n" * "="^50)
+    println("Starting Training Run $run_number_formatted")
+    println("="^50)
+
+    setup_training_run(batch_index, k)
+
+    test = dataset[run_number_formatted]
+    println("Processing alpha matrix: $test")
+
     # Loop through each entry in the JSON object
     for (run_idx, (alpha_matrix_key, series_coeffs)) in enumerate(dataset)
-      println("\n" * "="^50)
-      println("Starting Training Run $run_idx")
-      println("="^50)
-      println("Processing alpha matrix: $alpha_matrix_key")
-      println("Series coefficients: $series_coeffs")
 
-      # Create the training dirs
-      run_number_formatted = lpad(run_idx, 2, '0')
-      setup_training_run(run_idx, series_coeffs, length(dataset[run_number_formatted]))
+      # println("Series coefficients: $series_coeffs")
 
       # Convert string key back to matrix
+      #
+      #
+      #
+
       alpha_matrix = eval(Meta.parse(alpha_matrix_key))
-      println("Converted alpha matrix: ", alpha_matrix)
+      PINNSpecific.PINN(alpha_matrix) = ODE_coefficients # define later
+      PINNSpecific.validate(ODE_coefficients, series_coeffs)
+
+
       # TODO: Add the training implementation for the PINN Here
       # PINN training here using:
       # - alpha_matrix (converted from key)
       # - series_coeffs as target
+      # - ASK VICTOR HOW TO IMPLEMENT THE PINN WITH THIS
       println("Ready for PINN training with this alpha matrix and series coefficients...")
     end
   end
 end
 
-batch = [1, 10, 20, 30]
+batch = [1, 10, 100]
+
+# Uncomment to run the example
+run_training_sequence(batch)
 
 # Uncomment to run the example
 run_training_sequence(batch)

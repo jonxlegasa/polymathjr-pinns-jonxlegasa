@@ -105,7 +105,6 @@ function generate_random_ode_dataset(s::Settings, batch_index::Int)
   println("\ngenerating random α matrices for:")
   println("- ode order: $ode_order")
   println("- polynomial degree: $poly_degree")
-  println("\nDataset generation complete!")
 
   # Generate dataset_size examples
   for example_k in 1:s.dataset_size
@@ -136,13 +135,6 @@ function generate_random_ode_dataset(s::Settings, batch_index::Int)
         Dict()
       end
 
-      # read existing data
-      existing_data = if isfile("./data/dataset.json")
-        JSON.parsefile("./data/dataset.json")
-      else
-        Dict()
-      end
-
       # Determine which training run this is based on existing data
       dataset_key = lpad(batch_index, 2, '0')
 
@@ -157,13 +149,14 @@ function generate_random_ode_dataset(s::Settings, batch_index::Int)
       isdir("data") || mkpath("data") # ensure a data folder exists
       json_string = JSON.json(existing_data)
       write("./data/dataset.json", json_string)
+
+      println("\nDataset generation complete!")
     catch e
       println("failed to solve this ode: ", e)
-      continue  # continue to next example instead of returning
+      continue
     end
   end
 end
-
 
 export Settings, generate_random_ode_dataset
 end
