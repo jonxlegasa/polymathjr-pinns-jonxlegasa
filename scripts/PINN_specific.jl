@@ -21,7 +21,13 @@ The process involves:
 # You may need to install these packages first. In the Julia REPL, press `]` to enter Pkg mode, then run:
 # add Lux, ModelingToolkit, NeuralPDE, Optimization, OptimizationOptimJL, OptimizationOptimisers, Zygote, ComponentArrays, Plots, ProgressMeter
 
-module PINNSpecific
+module PINN
+
+struct PINNSettings
+  Layers::Int
+  Dimension::Int
+  Output::Int
+end
 
 using Lux, ModelingToolkit
 using Optimization, OptimizationOptimJL, OptimizationOptimisers
@@ -31,6 +37,9 @@ import IntervalSets: Interval
 using Plots, ProgressMeter
 import Random
 using TaylorSeries
+
+include("../utils/ProgressBar.jl")
+using .ProgressBar
 
 # Ensure a "data" directory exists for saving plots.
 isdir("data") || mkpath("data")
@@ -58,7 +67,7 @@ x_right = F(1.0) # Right boundary of the domain
 =#
 
 # Dxxx = Differential(x)^3
-Dx::Symbolics.Differential = Differential(x) # we are considering ay'+ ay = 0 with constant coefficients
+Dx = Differential(x) # we are considering ay'+ ay = 0 with constant coefficients
 
 # Define the ordinary differential equation.
 # Dxxx(u(x)) = cos(pi*x)
@@ -86,7 +95,7 @@ domains = [x ∈ Interval(x_left, x_right)]
 
 # For verification, we define the true, known analytic solution to the ODE.
 # This will be used to calculate the error of our approximation.
-# analytic_sol_func(x) = (pi * x * (-x + (pi^2) * (2x - 3) + 1) - sin(pi * x)) / (pi^3) # with the training data
+# analytic_sol_func(x) = (pi * x * (-x + (pi^2) * (2x - 3) + 1) - sin(pi * x)) / (pi^3) # We replace with our training examples
 
 # TODO: Put the training data
 # benchmark baby!!!!
@@ -103,10 +112,8 @@ N = 10 # The degree of the highest power term in the series.
 # Pre-calculate factorials (0!, 1!, ..., N!) for use in the series.
 fact = factorial.(0:N)
 
-
 num_supervised = 5 # The number of coefficients we will supervise during training.
 supervised_weight = F(1.0)  # Weight for the supervised loss term in the total loss function.
-
 
 #= This is where I have to replace the approximation to the ODE with the
 coefficients generated from the plugboardmethod =#
@@ -116,8 +123,6 @@ coefficients generated from the plugboardmethod =#
 # taylor_expansion = analytic_sol_func(t)
 # a_true = taylor_expansion.coeffs .* fact
 # training_data = a_true[1:num_supervised] # replace this with the plugboard coefficients
-
-
 
 # Create a set of points inside the domain to enforce the ODE. These are called "collocation points".
 num_points = 1000
@@ -154,24 +159,25 @@ p_init, st = Lux.setup(rng, coeff_net)
 
 # Wrap the initial parameters in a `ComponentArray`. This makes the nested `NamedTuple` of
 # parameters behave like a standard vector, making it compatible with the optimizer.
-p_init_ca = ComponentArray(p_init)
+p_init_ca = ComponentArray(p_init) # wtf? 
 
 
 # ---------------------------------------------------------------------------
 # Step 4: Define the Loss Function
 # ---------------------------------------------------------------------------
 
-# ADJUST THIS FOR ODE of first ORDER
-
+# TODO: ADJUST THIS FOR ODE of first ORDER
+# This loss function is more or less the same for training and benchmarking
 
 # The loss function measures how "wrong" our current approximation is. The optimizer's
 # job is to find the network parameters `p_net` that minimize this function.
-function loss_fn(p_net, ode_matrix) # for loop in here
+
+# generic loss function
+function loss_fn(p_net, ode_matrix, data) # for loop in here
   # First, run the network to get the current vector of power series coefficients.
   # The network takes a dummy input [0.0] and outputs our N+1 coefficients.
   a_vec = first(coeff_net([ode_matrix], p_net, st))[:, 1] # how do we adjust for a matrix
 
-  s::Settings = Plugboard.Settings(1, 0, k)
   # Define the approximate solution and its derivatives using the coefficients from the network.
   # This is the power series representation: u(x) = Σ aᵢ * x^(i-1) / (i-1)!
   u_approx(x) = sum(a_vec[i] * x^(i - 1) / fact[i] for i in 1:N+1)
@@ -185,15 +191,24 @@ function loss_fn(p_net, ode_matrix) # for loop in here
   # Calculate the loss from the boundary conditions.
   # This is the sum of squared errors for each boundary condition.
   loss_bc = abs2(u_approx(x_left) - F(0.0))
-            # abs2(u_approx(x_right) - F(cos(pi))) +
-            # abs2(Du_approx(x_right) - F(1.0)) # we might need this
+  # abs2(u_approx(x_right) - F(cos(pi))) +
+  # abs2(Du_approx(x_right) - F(1.0)) # we might need this
 
-
-  loss_supervised = sum(abs2, a_vec[1:num_supervised] - training_data) / num_supervised
+  loss_supervised = sum(abs2, a_vec[1:num_supervised] - data) / num_supervised # training_data from Plugboard
   # loss_supervised = 0.0 # This is a placeholder for any supervised loss, if needed.
   # The total loss is a weighted sum of the two components.
   return loss_pde + bc_weight * loss_bc + supervised_weight * loss_supervised
 end
+
+# GLOBAL LOSS
+function global_loss()
+  # TODO:
+  # for loop through plugboard coefficients
+  # the sum of the local loss 
+
+end
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -209,47 +224,23 @@ end
 # 
 =#
 
-# ---------------- progress bar ----------------
 maxiters = 500 # The total number of training iterations.
-p_bar = Progress(maxiters, desc="Training coefficient net...") # The progress bar.
-
-# The callback function is called after each optimization step.
-# We use it to update our progress bar.
-iter_count = 0
-callback = function (p, l)
-  global iter_count += 1
-  global last_shown_values
-
-  # If the current iteration is a milestone (1, 100, 200, etc.),
-  # update the values that we want to display.
-  if iter_count % 100 == 0 || iter_count == 1
-    last_shown_values = [(:iter, iter_count), (:loss, l)]
-    # Also, ensure the very last iteration's values are shown.
-  elseif iter_count == maxiters
-    last_shown_values = [(:iter, iter_count), (:loss, l)]
-  end
-
-  # On every single step, advance the progress bar, but always display
-  # the stored "last_shown_values". This makes the text static between milestones.
-  ProgressMeter.next!(p_bar; showvalues=last_shown_values)
-
-  return false # Return false to continue the optimization.
-end
+p_one::ProgressBarSettings = ProgressBar.ProgressBarSettings(maxiters, "Adam Training...") # first progress bar setting
+callback_one = ProgressBar.Bar(p_one)
 
 # Define the optimization problem. We specify the loss function, the initial parameters,
 # and the automatic differentiation backend (Zygote), which calculates the gradients.
 adtype = Optimization.AutoZygote()
 optfun = OptimizationFunction(loss_fn, adtype)
-prob = OptimizationProblem(optfun, p_init_ca)
+prob = OptimizationProblem(optfun, p_init_ca) # component array NEEDS to be used
 
 # Now, we solve the problem using the Adam optimizer.
-res = solve(prob,
+res = solve(prob, # solve is a general function for an optimizer
   OptimizationOptimisers.Adam(F(1e-3)); # Adam optimizer with a learning rate of 0.001
-  callback=callback,
+  callback=callback_one,
   maxiters=maxiters)
 
 # ---------------- stage 2 : LBFGS ----------------
-
 #=
 # LBFGS training process:
 # - More expensive
@@ -258,25 +249,21 @@ res = solve(prob,
 =#
 
 
+
 maxiters_lbfgs = 100
-p_bar2 = Progress(maxiters_lbfgs, desc="LBFGS fine-tune... ")
-iter2 = 0
-cb2 = function (_, l)
-  global iter2 += 1
-  ProgressMeter.next!(p_bar2; showvalues=[(:iter, iter2), (:loss, l)])
-  return false
-end
+p_two::ProgressBarSettings = ProgressBar.ProgressBarSettings(maxiters_lbfgs, "LBFGS fine-tune... ")
+callback_two = ProgressBar.Bar(p_two)
 
 prob2 = remake(prob; u0=res.u)
 res = solve(prob2,
   OptimizationOptimJL.LBFGS();
-  callback=cb2,
+  callback=callback_two,
   maxiters=maxiters_lbfgs)
 
 # Extract the final, trained parameters from the result.
 p_trained = res.u
 # Run the network one last time with the trained parameters to get the final coefficients.
-a_learned = first(coeff_net([F(0.0)], p_trained, st))[:, 1] 
+a_learned = first(coeff_net([F(0.0)], p_trained, st))[:, 1]
 # TODO: for loop the PINN function against the vectors in TRAINING set
 # PINN would have to be a function
 
@@ -296,9 +283,12 @@ u_predict_func(x) = sum(a_learned[i] * x^(i - 1) / fact[i] for i in 1:N+1)
 
 # Generate a dense set of points for smooth plotting.
 x_plot = x_left:F(0.01):x_right
-u_real = analytic_sol_func.(x_plot)
+u_real = analytic_sol_func.(x_plot) # replaced with the plugboard coefficients
+# TODO: Taylor Series with plugboard coefficients dataset["01"][alpha_matrix]
 u_predict = u_predict_func.(x_plot)
 
+# --- Plot 1: Plot the actual solution ---
+# TODO: actual solution plotted from Taylor Series
 plot_compare = plot(x_plot, u_real, label="Analytic Solution", linestyle=:dash, linewidth=3)
 plot!(plot_compare, x_plot, u_predict, label="PINN Power Series", linewidth=2)
 title!(plot_compare, "ODE Solution Comparison")
@@ -307,7 +297,6 @@ ylabel!(plot_compare, "u(x)")
 savefig(plot_compare, "data/solution_comparison.png")
 
 # --- Plot 2: Plot the absolute error of the solution ---
-
 error = max.(abs.(u_real .- u_predict), F(1e-20))
 plot_error = plot(x_plot, error,
   title="Absolute Error of Power Series Solution",
@@ -320,11 +309,12 @@ savefig(plot_error, "data/error.png")
 
 # --- Plot 3: Plot the error of the learned coefficients ---
 
+# TODO: pass in the coefficients not the taylor series
 # Calculate the absolute error between the true and learned coefficients.
 # Clamp the error to a minimum value to avoid log(0) issues.
 coeff_error = max.(abs.(a_true - a_learned), F(1e-20)) # COMPUTES THE ERROR!!!!
 
-plot_coeffs = plot(0:N, coeff_error, 
+plot_coeffs = plot(0:N, coeff_error,
   yscale=:log10, # Use a logarithmic scale for the y-axis
   title="Error in Learned Coefficients (log scale)",
   xlabel="Coefficient Index",
@@ -338,5 +328,8 @@ println("\nPlots saved to 'data' directory.")
 println("- solution_comparison.png")
 println("- error.png")
 println("- coefficient_error.png")
+
+
+export global_loss, PINNSettings
 
 end

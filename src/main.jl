@@ -4,6 +4,11 @@ using JSON
 include("../utils/plugboard.jl")
 using .Plugboard
 
+include("../scripts/PINN.jl")
+using .PINN
+
+
+
 function setup_training_run(run_number::Int64, batch_size::Any)
   """
   Creates a training run directory and output file with specified naming convention.
@@ -30,7 +35,6 @@ function setup_training_run(run_number::Int64, batch_size::Any)
   output_file = joinpath(training_run_dir, "training_info.txt")
   # Get current date and time
   current_datetime = now()
-
 
   # Write training run information to file
   open(output_file, "w") do file
@@ -94,13 +98,16 @@ function run_training_sequence(batch_sizes::Array{Int})
       # println("Series coefficients: $series_coeffs")
 
       # Convert string key back to matrix
-      #
-      #
-      #
-
       alpha_matrix = eval(Meta.parse(alpha_matrix_key))
-      PINNSpecific.PINN(alpha_matrix) = ODE_coefficients # define later
-      PINNSpecific.validate(ODE_coefficients, series_coeffs)
+
+      settings = PINNSettings(64, 1234, ode_matrices, 500, 100)
+
+      # Train the network
+      p_trained, coeff_net, st = train_pinn(settings, data_dict)
+
+      # Evaluate results
+      a_learned, u_func = evaluate_solution(p_trained, coeff_net, st, sample_matrix)
+
 
 
       # TODO: Add the training implementation for the PINN Here
@@ -114,9 +121,6 @@ function run_training_sequence(batch_sizes::Array{Int})
 end
 
 batch = [1, 10, 100]
-
-# Uncomment to run the example
-run_training_sequence(batch)
 
 # Uncomment to run the example
 run_training_sequence(batch)
