@@ -7,8 +7,6 @@ using .Plugboard
 include("../scripts/PINN.jl")
 using .PINN
 
-
-
 function setup_training_run(run_number::Int64, batch_size::Any)
   """
   Creates a training run directory and output file with specified naming convention.
@@ -107,8 +105,6 @@ function run_training_sequence(batch_sizes::Array{Int})
 
       # Evaluate results
       a_learned, u_func = evaluate_solution(p_trained, coeff_net, st, sample_matrix)
-
-
 
       # TODO: Add the training implementation for the PINN Here
       # PINN training here using:

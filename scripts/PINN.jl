@@ -100,7 +100,7 @@ bc_weight = F(100.0)
 
 function initialize_network(settings::PINNSettings)
   # Find the maximum matrix dimensions for input layer size
-  max_input_size = maximum(prod(size(matrix)) for matrix in settings.ode_matrix)
+  max_input_size = maximum(prod(size(matrix)) for matrix in settings.ode_matrix) # I think this might be used in src/main.jl
 
   # Define the neural network architecture using the settings
   coeff_net = Lux.Chain(
@@ -150,24 +150,11 @@ end
 
 function global_loss(p_net, settings::PINNSettings, data_dict, coeff_net, st)
   total_loss = F(0.0)
-  max_input_size = maximum(prod(size(matrix)) for matrix in settings.ode_matrix)
 
-  # Loop through each matrix in ode_matrix
   for matrix in settings.ode_matrix
-    # Flatten and pad the matrix to match input size
-    matrix_flat = reshape(matrix, :)
-    if length(matrix_flat) < max_input_size
-      # Pad with zeros to match max input size
-      padded_matrix = vcat(matrix_flat, zeros(F, max_input_size - length(matrix_flat)))
-    else
-      padded_matrix = matrix_flat[1:max_input_size]
-    end
-
-    # Reshape for network input
-    ode_matrix_input = reshape(padded_matrix, :, 1)
-
-    # Get corresponding data for this matrix
-    local_loss = loss_fn(p_net, data_dict[matrix], coeff_net, st, ode_matrix_input)
+    # Process each matrix at its natural size
+    matrix_flat = reshape(matrix, :, 1)  # Column vector for network
+    local_loss = loss_fn(p_net, data_dict[matrix], coeff_net, st, matrix_flat)
     total_loss += local_loss
   end
 
@@ -226,9 +213,13 @@ end
 # Step 9: Evaluation and Analysis Functions
 # ---------------------------------------------------------------------------
 
+# This code is the true solution for the ODE
+# analytic_sol_func(x) = (pi * x * (-x + (pi^2) * (2x - 3) + 1) - sin(pi * x)) / (pi^3) # We replace with our training examples
+# This is then represented as a TaylorSeries 
+
 function evaluate_solution(p_trained, coeff_net, st, ode_matrix_sample, analytic_sol_func=nothing)
   # Get learned coefficients for a sample matrix
-  max_input_size = prod(size(ode_matrix_sample))
+  max_input_size = prod(size(ode_matrix_sample)) # remove?
   matrix_flat = reshape(ode_matrix_sample, :, 1)
 
   a_learned = first(coeff_net(matrix_flat, p_trained, st))[:, 1]
@@ -242,7 +233,8 @@ function evaluate_solution(p_trained, coeff_net, st, ode_matrix_sample, analytic
   if analytic_sol_func !== nothing
     # Generate plotting points
     x_plot = x_left:F(0.01):x_right
-    u_real = analytic_sol_func.(x_plot)
+    # It makes sense that this has to be replaced because this is used for plotting the error as well
+    u_real = analytic_sol_func.(x_plot) # instead we have to make this be plugboard coefficients k
     u_predict = u_predict_func.(x_plot)
 
     # Plot comparison
